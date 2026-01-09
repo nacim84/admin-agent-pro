@@ -34,6 +34,9 @@ class OrchestratorAgent:
             api_key=self.settings.openrouter_api_key,
             model=self.settings.openrouter_model,
             temperature=0,
+            model_kwargs={
+                "response_format": {"type": "json_object"}
+            },
             default_headers={
                 "HTTP-Referer": "https://github.com/admin-agent-pro",
                 "X-Title": self.settings.app_name,
