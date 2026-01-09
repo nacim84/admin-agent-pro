@@ -312,7 +312,7 @@ class PDFGenerator:
         total = Decimal("0")
 
         for record in records:
-            c.drawString(2*cm, y, record.date.strftime('%d/%m/%Y'))
+            c.drawString(2*cm, y, record.travel_date.strftime('%d/%m/%Y'))
             trajet = f"{record.start_location} → {record.end_location}"[:30]
             c.drawString(4*cm, y, trajet)
             c.drawString(11*cm, y, f"{float(record.distance_km):.1f} km")

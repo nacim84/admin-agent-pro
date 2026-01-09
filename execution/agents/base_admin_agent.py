@@ -4,6 +4,7 @@ from abc import ABC, abstractmethod
 from typing import Any, TypedDict
 from pathlib import Path
 from langgraph.graph import StateGraph, END
+from langchain_google_genai import ChatGoogleGenerativeAI
 from execution.tools.pdf_generator import PDFGenerator
 from execution.tools.db_manager import DatabaseManager
 from execution.core.config import get_settings
@@ -33,6 +34,13 @@ class BaseAdminAgent(ABC):
         self.pdf_gen = PDFGenerator(Path(self.settings.tmp_dir) / "documents")
         self.db = DatabaseManager()
         self.logger = logging.getLogger(self.__class__.__name__)
+        
+        # Initialisation du LLM Gemini
+        self.llm = ChatGoogleGenerativeAI(
+            model="gemini-1.5-flash",
+            google_api_key=self.settings.gemini_api_key,
+            temperature=0,
+        )
 
     @abstractmethod
     async def validate_input(self, state: AdminAgentState) -> AdminAgentState:

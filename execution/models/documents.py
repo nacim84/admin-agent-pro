@@ -140,7 +140,7 @@ class Quote(BaseModel):
 class MileageRecord(BaseModel):
     """Modèle de note de frais kilométriques."""
 
-    date: date = Field(..., description="Date du déplacement")
+    travel_date: date = Field(..., description="Date du déplacement")
     start_location: str = Field(..., min_length=1, description="Lieu de départ")
     end_location: str = Field(..., min_length=1, description="Lieu d'arrivée")
     distance_km: Decimal = Field(..., gt=0, description="Distance en kilomètres")

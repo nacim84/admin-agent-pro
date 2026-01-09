@@ -16,7 +16,8 @@ class Settings(BaseSettings):
     postgres_password: str
 
     # LLM API
-    anthropic_api_key: str
+    anthropic_api_key: Optional[str] = None
+    gemini_api_key: str
 
     # Telegram
     telegram_bot_token: str
