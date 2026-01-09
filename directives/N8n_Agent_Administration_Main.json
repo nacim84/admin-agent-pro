@@ -1,0 +1,1578 @@
+{
+  "name": "Agent_Administration_Main",
+  "nodes": [
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.text }}",
+        "options": {
+          "systemMessage": "=## 1. Identité et Rôle\n\n**Nom :** Agent_Administration\n**Identité :** Tu es un expert en gestion administrative et comptabilité pour le compte de la société **RN-BLOCK**.\n**Mission :** Ton but est de préparer les données pour la génération de documents officiels (Factures, Quittances, Charges, Frais Kilométriques) et d'orchestrer leur envoi par email. Tu es l'intermédiaire intelligent entre la base de données, l'utilisateur et les outils de génération PDF et envoie par mail.\n\n## 2. Logique de Gestion des Emails (CRITIQUE)\n\nPour **chaque** envoi d'email, tu dois respecter scrupuleusement la hiérarchie suivante pour les destinataires. Ne jamais inventer d'adresses.\n\n- **Destinataire Principal (TO) :**\n  - `email_entreprise` (Toujours le destinataire principal).\n- **Copie (CC) :**\n  - `email_professionnel_1` (Si disponible).\n  - `email_professionnel_2` (Si disponible).\n  - `email_client` (Si disponible).\n- **Interdiction :** Ne jamais utiliser d'autres adresses e-mail trouvées ailleurs dans les documents.\n\n## 3. Flux de Travail (Step-by-Step)\n\n### Étape 1 : Identification et Extraction\n\nIdentifie l'intention de l'utilisateur et utilise l'outil d'extraction correspondant (\"Get_Infos...\").\n\n- Si **Facture** : Utiliser `Get_Infos_Facture`.\n- Si **Quittance de Loyer** : Utiliser `Get_Infos_Quittance`.\n- Si **Charges Locatives** : Utiliser `Get_Infos_Charges_Locatives`.\n- Si **Frais Kilométriques** : Utiliser `Get_Infos_Frais_Kilometriques`.\n\n### Étape 2 : Vérification des Données Manquantes\n\nAnalyse les données extraites. Si des données critiques manquent, demande-les à l'utilisateur en langage naturel (Français) avant de continuer.\n\n- **Pour Facture :** Demander la `quantité` de produits/services si non fournie.\n- **Pour Frais Kilométriques :** Demander le `mois` concerné et le `nombre_de_jours_sur_site`.\n- **Pour Quittance/Charges :** Vérifier la période (Mois/Année). Si non précisée, utiliser le mois courant.\n\n### Étape 3 : Traitement et Calculs (Selon le type)\n\n#### A. Cas : Facture\n\n1.  Récupérer : `nom_entreprise`, `adresse_entreprise`, `nom_client`, `adresse_client`, `produit`, `prix_unitaire`, `tva`, `paiement`, `devise`, `emails`, `annee`.\n2.  Intégrer la `quantité` fournie par l'utilisateur.\n3.  **Calculs :**\n    - `totalHT` = prix*unitaire \\_fois* quantité.\n    - `montantTVA` = totalHT _fois_ (tva _divisé par_ 100).\n    - `totalTTC` = totalHT _plus_ montantTVA.\n4.  Générer ID : `FACT-RNBLOCK-MMYYYY`.\n\n#### B. Cas : Charges Locatives\n\n1.  Récupérer la liste des charges.\n2.  **Calculs :**\n    - Pour chaque ligne : `total_ttc` = prix*unitaire \\_fois* quantité _plus_ application du taux. (Arrondir à 2 décimales).\n    - Calculer le `global_total_ttc` (Somme des totaux).\n3.  Générer ID : `CHARGES-LOCATIVES-RNBLOCK-MMYYYY`.\n\n#### C. Cas : Quittance de Loyer\n\n1.  **Règle : AUCUN CALCUL.** Utiliser strictement les montants extraits de la base de données.\n2.  Générer ID : `QUIT-RNBLOCK-MMYYYY`.\n\n#### D. Cas : Frais Kilométriques\n\n1.  Récupérer : `adresse_client_mission`, `nom_client_mission`, `trajet_client_mission` (km), `nom_professionnel`, `puissance_fiscal`.\n2.  Intégrer `mois` et `nbr_jours_site` fournis par l'utilisateur.\n3.  **Règle : AUCUN CALCUL.** Transmettre les données brutes. C'est l'outil PDF qui fera les maths.\n4.  Générer ID : `FRAIS-KILOMETRIQUES-RNBLOCK-MMYYYY`.\n\n### Étape 4 : Génération et Envoi\n\n1.  Construire le JSON final (voir Exemples).\n2.  Appeler l'outil de création PDF approprié (`Create_..._Pdf`).\n3.  Appeler l'outil `Send_Mail` avec les destinataires définis en section 2.\n\n## 4. Contraintes de Format et Communication\n\n1.  **Format de Réponse Chat :**\n    - Texte brut uniquement (pas de Markdown, pas de gras, pas d'italique).\n    - Pas de symboles mathématiques (+, -, \\*, /). Utiliser les mots : \"plus\", \"moins\", \"fois\", \"divisé par\".\n    - Utiliser des listes numérotées (1., 2.) plutôt que des puces.\n2.  **Format des Nombres (JSON) :**\n    - Toujours 2 chiffres après la virgule pour les prix (ex: 500.00).\n    - TVA exprimée en % ou décimale selon l'attendu de l'outil (ex: \"20%\").\n3.  **Langue :** Français professionnel et courtois.\n4.  **Date système :** Utiliser la variable `{{ $now }}` pour la date du jour si nécessaire.\n\n## 5. Outils Disponibles\n\n- `Get_Infos_Facture`, `Get_Infos_Quittance`, `Get_Infos_Charges_Locatives`, `Get_Infos_Frais_Kilometriques`\n- `Calculator` (Pour TVA/Totaux simples)\n- `Create_Facture_Pdf`, `Create_Quittance_Pdf`, `Create_Charges_Locatives_Pdf`, `Create_Frais_Kilometriques_Pdf`\n- `Send_Mail` (Signature imposée : \"M Nacim RABIA, RN-BLOCK\")\n\n## 6. Exemples de Structure JSON (Strict)\n\n### Exemple Facture\n\n```json\n{\n  \"numero\": \"FACT-RNBLOCK-022025\",\n  \"dateEmission\": \"01/01/2025\",\n  \"dateEcheance\": \"01/02/2025\",\n  \"nomProfessionnel\": \"Nacim RABIA\",\n  \"adresseProfessionnel\": \"2 RUE JEHAN ALAIN<br> 78230 LE PEC ,France<br> Email:rabia.nacim@gmail.com<br> Tél: 06.95.96.15.81<br>\",\n  \"emailProfessionnel\": \"rabia.nacim@gmail.com\",\n  \"emailEntreprise\": \"rn.block.pro@gmail.com\",\n  \"nomClient\": \"ALTECA\",\n  \"adresseClient\": \"45 RUE ANATOLE FRANCE<br> 69100 VILLEURBANNE,France<br> Email: comptafournisseurs@alteca.fr<br> N° de TVA: FR54404208035<br>\",\n  \"emailClient\": \"rabia.nacim@yahoo.com\",\n  \"devise\": \"€\",\n  \"tva\": \"20%\",\n  \"item\": {\n    \"nomProduit\": \"Developpeur FullStack Senior\",\n    \"quantite\": 10.5,\n    \"prixUnitaire\": 500,\n    \"totalHT\": 5250\n  },\n  \"globalTotalHT\": 5250,\n  \"globalTotalTVA\": 1050,\n  \"globalTotalTTC\": 6300,\n  \"infosPaiement\": \"Moyen de paiement: Virement<br> Établissement:QONTO<br> IBAN: FR76 1695 8000 0144 6368 0007 451<br> BIC: QNTOFRP1XXX<br> Référence:PLL9X3GN6WPOZZ\"\n}\n```\n\n### Exemple Quittance de Loyer\n\n```json\n{\n  \"periode\": \"Mars 2025\",\n  \"numero\": \"QUIT-RNBLOCK-032025\",\n  \"locataire\": \"RN-BLOCK EURL\",\n  \"adresseLocataire\": \"2 Rue JEHAN ALAIN, 78230, LE PECQ\",\n  \"bailleur\": \"Nacim RABIA\",\n  \"adresseBailleur\": \"2 Rue JEHAN ALAIN, 78230 LE PECQ\",\n  \"adresseProprieteLouee\": \"2 Rue JEHAN ALAIN, 78230 LE PECQ\",\n  \"montantLoyer\": \"500,00\",\n  \"devise\": \"€\"\n}\n```\n\n### Exemple Charges Locatives\n\n```json\n{\n  \"periode\": \"Mars 2025\",\n  \"numero\": \"CHARGES-LOCATIVE-RNBLOCK-032025\",\n  \"bailleur\": \"Nacim RABIA\",\n  \"charges\": [\n    {\n      \"nom_produit\": \"Produit A\",\n      \"quantite\": 10,\n      \"prix_unitaire\": 25.5,\n      \"taux_applique\": \"10%\",\n      \"total_ttc\": 255.0\n    },\n    {\n      \"nom_produit\": \"Produit B\",\n      \"quantite\": 5,\n      \"prix_unitaire\": 50.0,\n      \"taux_applique\": \"20%\",\n      \"total_ttc\": 250.0\n    },\n    {\n      \"nom_produit\": \"Produit C\",\n      \"quantite\": 2,\n      \"prix_unitaire\": 100.0,\n      \"taux_applique\": \"15%\",\n      \"total_ttc\": 200.0\n    }\n  ],\n  \"global_total_ttc\": 705.0,\n  \"devise\": \"€\"\n}\n```\n\n### Exemple Frais Kilométriques\n\n```json\n{\n  \"numero\": \"FRAIS-KILOMETRIQUES-RNBLOCK-082025\",\n  \"annee\": 2025,\n  \"mois\": 8,\n  \"nbr_jours_site\": 3,\n  \"adresse_client_mission\": \"12 Rue Villiot, 75012 Paris\",\n  \"nom_client_mission\": \"CA-TS\",\n  \"nbr_kilometres_trajet\": 42.0,\n  \"prenom_professionnel\": \"Nacim\",\n  \"nom_professionnel\": \"RABIA\",\n  \"puissance_fiscal_vehicule\": 5\n}\n```\n"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        1072,
+        32
+      ],
+      "id": "c2e52663-df71-4f8a-9950-57e17f69bacd",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {},
+      "type": "@n8n/n8n-nodes-langchain.toolCalculator",
+      "typeVersion": 1,
+      "position": [
+        576,
+        400
+      ],
+      "id": "0b27af1e-fc78-4e96-bcbb-a0a1f76911e7",
+      "name": "Calculator"
+    },
+    {
+      "parameters": {
+        "name": "Create_Facture_Pdf",
+        "description": "={\n \"numero\": \"FACT-RNBLOCK-022025\",\n \"dateEmission\": \"09/02/2025\",\n \"dateEcheance\": \"09/03/2025\",\n \"nomProfessionnel\": \"RN-BLOCK\",\n \"adresseProfessionnel\": \"2 RUE JEHAN ALAIN<br>78230 LE PECQ, France<br>Email: rabia.nacim@gmail.com<br>Tél: 06.95.96.15.81<br>\",\n \"nomClient\": \"ALTECA\",\n \"adresseClient\": \"45 RUE ANATOLE FRANCE<br>69100 VILLEURBANNE, France<br>Email: comptafournisseurs@alteca.fr<br>N° de TVA: FR54404208035<br>\",\n \"devise\": \"€\",\n \"tva\": \"20%\",\n \"item\": {\n  \"nomProduit\": \"Developpeur FullStack Senior\",\n  \"quantite\": 20,\n  \"prixUnitaire\": 500,\n  \"totalHT\": 10000\n },\n \"globalTotalHT\": 5000,\n \"globalTotalTVA\": 1000,\n \"globalTotalTTC\": 6000,\n \"infosPaiement\": \"Moyen de paiement: Virement<br>Établissement: QONTO<br>IBAN: FR76 1695 8000 0144 6368 0007 451<br>BIC: QNTOFRP1XXX<br>Référence: PLL9X3GN6WPOZZ\"\n}",
+        "workflowId": {
+          "__rl": true,
+          "value": "bMvMOxJVJk7BTHth",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/bMvMOxJVJk7BTHth",
+          "cachedResultName": "Create_Facture_Pdf_Tool"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "numero": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('numero', ``, 'string') }}",
+            "dateEmission": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('dateEmission', ``, 'string') }}",
+            "dateEcheance": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('dateEcheance', ``, 'string') }}",
+            "nomProfessionnel": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('nomProfessionnel', ``, 'string') }}",
+            "adresseProfessionnel": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('adresseProfessionnel', ``, 'string') }}",
+            "nomClient": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('nomClient', ``, 'string') }}",
+            "adresseClient": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('adresseClient', ``, 'string') }}",
+            "devise": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('devise', ``, 'string') }}",
+            "tva": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('tva', ``, 'string') }}",
+            "item": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('item', ``, 'string') }}",
+            "globalTotalHT": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('globalTotalHT', ``, 'number') }}",
+            "globalTotalTVA": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('globalTotalTVA', ``, 'number') }}",
+            "globalTotalTTC": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('globalTotalTTC', ``, 'number') }}",
+            "infosPaiement": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('infosPaiement', ``, 'string') }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "numero",
+              "displayName": "numero",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "dateEmission",
+              "displayName": "dateEmission",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "dateEcheance",
+              "displayName": "dateEcheance",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "nomProfessionnel",
+              "displayName": "nomProfessionnel",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "adresseProfessionnel",
+              "displayName": "adresseProfessionnel",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "nomClient",
+              "displayName": "nomClient",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "adresseClient",
+              "displayName": "adresseClient",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "devise",
+              "displayName": "devise",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "tva",
+              "displayName": "tva",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "item",
+              "displayName": "item",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "object"
+            },
+            {
+              "id": "globalTotalHT",
+              "displayName": "globalTotalHT",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number"
+            },
+            {
+              "id": "globalTotalTVA",
+              "displayName": "globalTotalTVA",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number"
+            },
+            {
+              "id": "globalTotalTTC",
+              "displayName": "globalTotalTTC",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number"
+            },
+            {
+              "id": "infosPaiement",
+              "displayName": "infosPaiement",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 2,
+      "position": [
+        816,
+        528
+      ],
+      "id": "cf49fb59-c5d3-4157-8dd3-8e0feb465523",
+      "name": "Create_Facture_Pdf"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Telegram Trigger').item.json.message.from.id }}",
+        "text": "={{ $json.output }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2160,
+        112
+      ],
+      "id": "fcdcc3d0-644d-433c-b9de-85205a5177c9",
+      "name": "Telegram",
+      "webhookId": "041c05dd-9ea2-4e21-b692-22ca68716f8b",
+      "credentials": {
+        "telegramApi": {
+          "id": "uVB8jzaqu3AZDNjg",
+          "name": "Compta_Companion_Credentials"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "name": "Send_Mail",
+        "description": "Utilise le pour envoyer n'import quel document par mail.",
+        "workflowId": {
+          "__rl": true,
+          "value": "zofQHtELSuJOaDN5",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/zofQHtELSuJOaDN5",
+          "cachedResultName": "Send_Mail_Tool"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "documentId": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('documentId', ``, 'string') }}",
+            "documentName": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('documentName', ``, 'string') }}",
+            "emailAddress": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('emailAddress', ``, 'string') }}",
+            "emailCcAddress": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('emailCcAddress', ``, 'string') }}",
+            "subject": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('subject', ``, 'string') }}",
+            "content": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('content', ``, 'string') }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "documentId",
+              "displayName": "documentId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "documentName",
+              "displayName": "documentName",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "emailAddress",
+              "displayName": "emailAddress",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "emailCcAddress",
+              "displayName": "emailCcAddress",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "subject",
+              "displayName": "subject",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "content",
+              "displayName": "content",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 2,
+      "position": [
+        688,
+        464
+      ],
+      "id": "a2d82792-2385-4085-81b7-8ac09d500ca2",
+      "name": "Send_Mail"
+    },
+    {
+      "parameters": {
+        "content": "# Automatisation de la création, conversion en Pdf et l'envoie des documents",
+        "height": 80,
+        "width": 3096,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -736,
+        -240
+      ],
+      "id": "af0676e3-ef7b-460c-9be0-0432fb91f846",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "name": "Create_Quittance_Pdf",
+        "description": "=Utilise cet outil pour créer des quittances de loyer sous format PDF.\n\n**Json attendu en entrée :**\n{\n \"periode\": \"Mars 2025\",\n \"numero\": \"QUIT-RNBLOCK-022025\",\n \"locataire\": \"Société RN-BLOCK SASU\",\n \"adresseLocataire\": \"2 Rue JEHAN ALAIN, 78230, LE PECQ\",\n \"bailleur\": \"Nacim RABIA\",\n \"adresseBailleur\": \"2 Rue JEHAN ALAIN, 78230 LE PECQ\",\n \"adresseProprieteLouee\": \"2 Rue JEHAN ALAIN, 78230 LE PECQ\",\n \"montantLoyer\": \"500,00\",\n \"devise\": \"€\",\n \"emailLocataire\": \"rn.block.pro@gmail.com\"\n}",
+        "workflowId": {
+          "__rl": true,
+          "value": "9efOzRya7su4bb2r",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/9efOzRya7su4bb2r",
+          "cachedResultName": "Create_Quittance_Pdf_Tool"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "periode": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('periode', ``, 'string') }}",
+            "numero": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('numero', ``, 'string') }}",
+            "locataire": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('locataire', ``, 'string') }}",
+            "adresseLocataire": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('adresseLocataire', ``, 'string') }}",
+            "bailleur": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('bailleur', ``, 'string') }}",
+            "adresseBailleur": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('adresseBailleur', ``, 'string') }}",
+            "adresseProprieteLouee": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('adresseProprieteLouee', ``, 'string') }}",
+            "montantLoyer": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('montantLoyer', ``, 'string') }}",
+            "devise": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('devise', ``, 'string') }}",
+            "emailLocataire": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('emailLocataire', ``, 'string') }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "periode",
+              "displayName": "periode",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "numero",
+              "displayName": "numero",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "locataire",
+              "displayName": "locataire",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "adresseLocataire",
+              "displayName": "adresseLocataire",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "bailleur",
+              "displayName": "bailleur",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "adresseBailleur",
+              "displayName": "adresseBailleur",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "adresseProprieteLouee",
+              "displayName": "adresseProprieteLouee",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "montantLoyer",
+              "displayName": "montantLoyer",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "devise",
+              "displayName": "devise",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "emailLocataire",
+              "displayName": "emailLocataire",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 2,
+      "position": [
+        976,
+        576
+      ],
+      "id": "23e1f434-6479-45fc-8349-fd6c250a6bff",
+      "name": "Create_Quittance_Pdf"
+    },
+    {
+      "parameters": {
+        "name": "Create_Charges_Locatives",
+        "description": "=Utilise cet outil pour créer des factures de charges locatives sous format PDF.\n\nIl faut calculer pour chaque charge le \"total_ttc\", et à la fin le \"global_total_ttc\",\n\nExigence : il faut prendre uniqument 2 chiffres apres la virgule pour les montants calculés.\n\n**Json attendu en entrée :**\n{\n  \"periode\": \"Mars 2025\",\n  \"numero\": \"CHARGES-LOCATIVE-RNBLOCK-032025\",\n  \"bailleur\": \"Nacim RABIA\",\n  \"charges\": [\n  {\n    \"nom_produit\": \"Produit A\",\n    \"quantite\": 10,\n    \"prix_unitaire\": 25.50,\n    \"taux_applique\": \"10%\",\n    \"total_ttc\": 25.50\n  },\n  {\n    \"nom_produit\": \"Produit B\",\n    \"quantite\": 5,\n    \"prix_unitaire\": 50.00,\n    \"taux_applique\": \"20%\",\n    \"total_ttc\": 50.00\n  },\n    {\n    \"nom_produit\": \"Produit C\",\n    \"quantite\": 2,\n    \"prix_unitaire\": 100.00,\n    \"taux_applique\": \"15%\",\n    \"total_ttc\": 30.00\n  }\n],\n  \"global_total_ttc\": 105.50,\n  \"devise\": \"€\"\n}",
+        "workflowId": {
+          "__rl": true,
+          "value": "n9L5WadWazNf76N9",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/n9L5WadWazNf76N9",
+          "cachedResultName": "Create_Charges_Locatives_Pdf_Tool"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "periode": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('periode', ``, 'string') }}",
+            "numero": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('numero', ``, 'string') }}",
+            "bailleur": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('bailleur', ``, 'string') }}",
+            "charges": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('charges', ``, 'string') }}",
+            "globalTotalTTC": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('globalTotalTTC', ``, 'number') }}",
+            "devise": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('devise', ``, 'string') }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "periode",
+              "displayName": "periode",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "numero",
+              "displayName": "numero",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "bailleur",
+              "displayName": "bailleur",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "charges",
+              "displayName": "charges",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "array"
+            },
+            {
+              "id": "globalTotalTTC",
+              "displayName": "globalTotalTTC",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number"
+            },
+            {
+              "id": "devise",
+              "displayName": "devise",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 2,
+      "position": [
+        1328,
+        592
+      ],
+      "id": "7c5eae9c-8632-4260-a9b9-7334d9ecc8df",
+      "name": "Create_Charges_Locatives_Pdf"
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $('Merge').item.json.chat.id }}",
+        "tableName": "=admin_agent_chat_histories",
+        "contextWindowLength": 20
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryPostgresChat",
+      "typeVersion": 1.3,
+      "position": [
+        464,
+        320
+      ],
+      "id": "54eb77fa-cac4-4dcb-a303-5b684bc6177b",
+      "name": "Postgres Chat Memory",
+      "credentials": {
+        "postgres": {
+          "id": "BMh8QYnE2kGIsz2l",
+          "name": "Postgres account data workflows"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "file",
+        "fileId": "={{ $json.message.voice.file_id }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        -240,
+        -64
+      ],
+      "id": "9ee1c566-96b9-4214-a96f-b3d01a128c52",
+      "name": "Telegram1",
+      "webhookId": "6f6bf7de-6ec4-47ca-bb9d-663cc009d377",
+      "credentials": {
+        "telegramApi": {
+          "id": "uVB8jzaqu3AZDNjg",
+          "name": "Compta_Companion_Credentials"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "51d7c50f-c997-4c41-b091-9d39cdee80f0",
+              "leftValue": "={{ $json.message.voice.file_id }}",
+              "rightValue": "=",
+              "operator": {
+                "type": "string",
+                "operation": "exists",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -464,
+        32
+      ],
+      "id": "43dec0ea-6043-4f13-9c19-005589de9b69",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "resource": "audio",
+        "operation": "transcribe",
+        "binaryPropertyName": "=data",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [
+        -16,
+        -64
+      ],
+      "id": "244c7f85-fa9e-4107-a328-f1970b256c24",
+      "name": "OpenAI",
+      "credentials": {
+        "openAiApi": {
+          "id": "Pxt9IfWT15vivBVj",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.1,
+      "position": [
+        208,
+        32
+      ],
+      "id": "e32eab0a-6617-4312-8458-f06e8bd52d77",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "38fe77e1-fb81-49aa-9338-6ce123cee9b3",
+              "name": "text",
+              "value": "={{ $json.message.text }}",
+              "type": "string"
+            },
+            {
+              "id": "9033c9bf-5086-44d3-a057-79183a6ef9da",
+              "name": "chat.id",
+              "value": "={{ $json.message.chat.id }}",
+              "type": "number"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -16,
+        128
+      ],
+      "id": "34914856-47bc-44c4-a697-b22b7cd72c8a",
+      "name": "Edit Fields"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        352,
+        224
+      ],
+      "id": "b1baf10c-8d90-42a9-8df2-022ab2f4a798",
+      "name": "Google Gemini Chat Model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "XQFqtl8LCFDuPN8q",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "Z1wHpP7f1RnLaPgb",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/Z1wHpP7f1RnLaPgb",
+          "cachedResultName": "Create_Frais_Kilometriques_Pdf_Tool"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "annee": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('annee', ``, 'number') }}",
+            "mois": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('mois', ``, 'number') }}",
+            "nbr_jours_site": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('nbr_jours_site', ``, 'number') }}",
+            "adresse_client_mission": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('adresse_client_mission', ``, 'string') }}",
+            "nom_client_mission": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('nom_client_mission', ``, 'string') }}",
+            "nbr_kilometres_trajet": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('nbr_kilometres_trajet', ``, 'number') }}",
+            "prenom_professionnel": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('prenom_professionnel', ``, 'string') }}",
+            "nom_professionnel": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('nom_professionnel', ``, 'string') }}",
+            "puissance_fiscal_vehicule": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('puissance_fiscal_vehicule', ``, 'number') }}",
+            "numero": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('numero', ``, 'string') }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "numero",
+              "displayName": "numero",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "annee",
+              "displayName": "annee",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number"
+            },
+            {
+              "id": "mois",
+              "displayName": "mois",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number"
+            },
+            {
+              "id": "nbr_jours_site",
+              "displayName": "nbr_jours_site",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number"
+            },
+            {
+              "id": "adresse_client_mission",
+              "displayName": "adresse_client_mission",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "nom_client_mission",
+              "displayName": "nom_client_mission",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "nbr_kilometres_trajet",
+              "displayName": "nbr_kilometres_trajet",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number"
+            },
+            {
+              "id": "prenom_professionnel",
+              "displayName": "prenom_professionnel",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "nom_professionnel",
+              "displayName": "nom_professionnel",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "puissance_fiscal_vehicule",
+              "displayName": "puissance_fiscal_vehicule",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 2.2,
+      "position": [
+        1152,
+        592
+      ],
+      "id": "fce750cd-f4e4-413e-a375-d3678293b6d7",
+      "name": "Create_Frais_Kilometriques_Pdf"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Nettoie le texte de sortie de l'agent pour Telegram\nconst output = items[0].json.output;\n\n// Supprime les caractères Markdown problématiques\nlet cleanText = output\n  // Supprime les ** pour le gras\n  .replace(/\\*\\*(.*?)\\*\\*/g, '$1')\n  // Supprime les * simples pour l'italique\n  .replace(/\\*(.*?)\\*/g, '$1')\n  // Supprime les _ pour l'italique\n  .replace(/_(.*?)_/g, '$1')\n  // Supprime les ` pour le code\n  .replace(/`(.*?)`/g, '$1')\n  // Supprime les liens markdown [text](url)\n  .replace(/\\[([^\\]]+)\\]\\([^\\)]+\\)/g, '$1')\n  // Supprime les # pour les titres\n  .replace(/#{1,6}\\s/g, '')\n  // Nettoie les listes avec * en • (bullet)\n  .replace(/^\\s*[-*+]\\s/gm, '• ')\n  .replace(/_/g, '')\n  .replace(/\\*/g, '')\n  // Nettoie les listes numérotées\n  .replace(/^\\s*\\d+\\.\\s/gm, (match, offset, string) => {\n    const lineStart = string.lastIndexOf('\\n', offset) + 1;\n    const lineNumber = (string.substring(0, offset).match(/^\\s*\\d+\\.\\s/gm) || []).length + 1;\n    return `${lineNumber}. `;\n  })\n  // Supprime les blocs de code\n  .replace(/```[\\s\\S]*?```/g, '')\n  // Remplace les retours à la ligne multiples\n  .replace(/\\n{3,}/g, '\\n\\n')\n  // Supprime les espaces en début et fin\n  .trim();\n\nreturn [{ json: { output: cleanText } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1664,
+        32
+      ],
+      "id": "05a60606-28b3-4def-8907-b6ae631bcfb7",
+      "name": "Code"
+    },
+    {
+      "parameters": {
+        "updates": [
+          "message"
+        ],
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -688,
+        112
+      ],
+      "id": "676cd120-b21d-4d3b-b090-fe32fc6bee2a",
+      "name": "Telegram Trigger",
+      "webhookId": "98cb0aa5-bc5d-492e-9fec-8e29d1499a45",
+      "credentials": {
+        "telegramApi": {
+          "id": "uVB8jzaqu3AZDNjg",
+          "name": "Compta_Companion_Credentials"
+        }
+      },
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "inputSource": "jsonExample",
+        "jsonExample": " {\n    \"message\": {\n      \"chat\": {\n        \"id\": 1254\n      },\n      \"text\": \"Bonjour\"\n    }\n  }"
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -688,
+        -48
+      ],
+      "id": "5ca382d7-bfbe-4af9-b3cd-b05c4d5054dd",
+      "name": "When Executed by Another Workflow"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "ee21c035-c05c-49f9-a148-f25436441230",
+              "name": "output",
+              "value": "={{ $json.output }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2160,
+        -48
+      ],
+      "id": "95fb46c5-5d62-4f7f-be00-33420d57f0bf",
+      "name": "Edit Fields1"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "29971617-b699-4e10-b01c-3f77b08fc8ed",
+              "leftValue": "={{ $('Telegram Trigger').item.json.message }}",
+              "rightValue": "",
+              "operator": {
+                "type": "object",
+                "operation": "exists",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "51d7c50f-c997-4c41-b091-9d39cdee80f0",
+              "leftValue": "={{ $('Telegram Trigger').item.json.message.chat.id !== null }}",
+              "rightValue": "=",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1856,
+        32
+      ],
+      "id": "a7e6b88b-013e-430e-8692-3c8e65053256",
+      "name": "If1"
+    },
+    {
+      "parameters": {
+        "content": "## Création du schéma de la DB + Ingestion des données",
+        "height": 80,
+        "width": 1256,
+        "color": 3
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -736,
+        656
+      ],
+      "typeVersion": 1,
+      "id": "1daf79ac-cf02-490d-932c-cd3c81cae016",
+      "name": "Sticky Note8"
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "=Utilise cet outil pour recuperer les données/informations nécéssaires pour les quittances de loyer.",
+        "operation": "select",
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "data_administration",
+          "mode": "list",
+          "cachedResultName": "data_administration"
+        },
+        "limit": 1,
+        "where": {
+          "values": [
+            {
+              "column": "id_data_administration",
+              "value": "quittance_loyer_1"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgresTool",
+      "typeVersion": 2.6,
+      "position": [
+        1648,
+        480
+      ],
+      "id": "e055569c-952a-48ab-9d33-b0e3c2337c32",
+      "name": "Get_Infos_Quittance_Loyer",
+      "credentials": {
+        "postgres": {
+          "id": "BMh8QYnE2kGIsz2l",
+          "name": "Postgres account data workflows"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "=Utilise cet outil pour recuperer les données/informations nécéssaires pour les charges locatives.",
+        "operation": "select",
+        "schema": {
+          "__rl": true,
+          "value": "public",
+          "mode": "list",
+          "cachedResultName": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "data_administration",
+          "mode": "list",
+          "cachedResultName": "data_administration"
+        },
+        "limit": 1,
+        "where": {
+          "values": [
+            {
+              "column": "id_data_administration",
+              "value": "charge_locative_1"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgresTool",
+      "typeVersion": 2.6,
+      "position": [
+        1792,
+        400
+      ],
+      "id": "9430b61d-79f0-408d-865c-d21530757ca4",
+      "name": "Get_Infos_Charges_Locatives",
+      "credentials": {
+        "postgres": {
+          "id": "BMh8QYnE2kGIsz2l",
+          "name": "Postgres account data workflows"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "=Utilise cet outil pour recuperer les données/informations nécéssaires pour la facturation.",
+        "operation": "select",
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "data_administration",
+          "mode": "list",
+          "cachedResultName": "data_administration"
+        },
+        "limit": 1,
+        "where": {
+          "values": [
+            {
+              "column": "id_data_administration",
+              "value": "facturation_client_1"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgresTool",
+      "typeVersion": 2.6,
+      "position": [
+        1488,
+        544
+      ],
+      "id": "65797f84-d8ba-4779-945c-b0b438ee66fd",
+      "name": "Get_Infos_Facture_Client",
+      "credentials": {
+        "postgres": {
+          "id": "BMh8QYnE2kGIsz2l",
+          "name": "Postgres account data workflows"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "CREATE TABLE data_administration (\n \n  id_data_administration VARCHAR(255) PRIMARY KEY,\n\n  -- Identité électronique\n  email_professionnel_1 VARCHAR(255) NULL,\n  email_professionnel_2 VARCHAR(255) NULL,\n  email_entreprise VARCHAR(255) NULL,\n  email_client VARCHAR(255) NULL,\n\n  -- Devise\n  devise VARCHAR(10) NULL,\n\n  -- Professionnel\n  nom_professionnel VARCHAR(255) NULL,\n  \n  -- 1. Quittance de loyer\n  nom_entreprise VARCHAR(255),\n  adresse_entreprise VARCHAR(255),\n  adresse_professionnel VARCHAR(255),\n  montant_loyer DECIMAL(10,2),\n\n  -- 2. Facturation client\n  nom_client VARCHAR(255),\n  adresse_client TEXT,\n  produit VARCHAR(255),\n  prix_unitaire DECIMAL(10,2),\n  tva VARCHAR(10), -- Ex: \"20%\"\n  paiement TEXT,\n\n  -- 3. Charge locative\n  charges JSONB,\n\n  -- 4. Frais kilométriques\n  adresse_client_mission TEXT,\n  nom_client_mission VARCHAR(255),\n  trajet_client_mission DECIMAL(5,2),\n  puissance_fiscal INTEGER,\n\t\n  annee INTEGER NOT NULL -- Ex: 2023, 2024\n);\n\nCREATE TABLE \"kilometres_parcourus\" (\n    \"mois\" INT, -- Indique le mois de l'année (ex: 1-12)\n    \"annee\" INTEGER, -- Indique l'année (ex: 2023, 2024)\n    \"total_kilometres_parcourus\" DECIMAL(10,1), -- 546,0 → 546.0 en décimal\n    CONSTRAINT pk_mois_annee PRIMARY KEY (\"mois\", \"annee\") -- Clé primaire composite\n);",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        -688,
+        768
+      ],
+      "id": "98d47e70-36a9-43d9-9717-002b34541e51",
+      "name": "Create Schema",
+      "credentials": {
+        "postgres": {
+          "id": "BMh8QYnE2kGIsz2l",
+          "name": "Postgres account data workflows"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "=Utilise cet outil pour recuperer les données/informations nécéssaires pour les frais kilometriques.",
+        "operation": "select",
+        "schema": {
+          "__rl": true,
+          "value": "public",
+          "mode": "list",
+          "cachedResultName": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "data_administration",
+          "mode": "list",
+          "cachedResultName": "data_administration"
+        },
+        "limit": 1,
+        "where": {
+          "values": [
+            {
+              "column": "id_data_administration",
+              "value": "frai_kilometrique_1"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgresTool",
+      "typeVersion": 2.6,
+      "position": [
+        1952,
+        336
+      ],
+      "id": "ccad7ade-ba9f-4331-aced-4247ad33d9be",
+      "name": "Get_Infos_Frais_Kilometriques",
+      "credentials": {
+        "postgres": {
+          "id": "BMh8QYnE2kGIsz2l",
+          "name": "Postgres account data workflows"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO data_administration (\n  id_data_administration,\n  annee,\n  email_professionnel_1,\n  email_professionnel_2,\n  email_entreprise,\n  devise,\n  nom_professionnel,\n  nom_entreprise,\n  adresse_entreprise,\n  adresse_professionnel,\n  montant_loyer,\n  nom_client,\n  adresse_client,\n  produit,\n  prix_unitaire,\n  tva,\n  paiement,\n  charges,\n  adresse_client_mission,\n  nom_client_mission,\n  trajet_client_mission,\n  puissance_fiscal\n) VALUES (\n  'facturation_client_1',\n  2025,\n  'rabia.nacim@gmail.com',\n  NULL,\n  NULL,\n  '€',\n  NULL,\n  'RN-BLOCK EURL',\n  '2 RUE JEHAN ALAIN<br>78230 LE PECQ, France<br>Email: rabia.nacim@gmail.com<br>Tél: 06.95.96.15.81<br>',\n  NULL,\n  NULL,\n  'ALTECA',\n  '45 RUE ANATOLE FRANCE<br>69100 VILLEURBANNE, France<br>Email: comptafournisseurs@alteca.fr<br>N° de TVA: FR54404208035<br>',\n  'Consultant FullStack Senior',\n  500,\n  '20 %',\n  E'Moyen de paiement: Virement<br>Établissement: QONTO<br>IBAN: FR76 1695 8000 0144 6368 0007 451<br>BIC: QNTOFRP1XXX<br>Référence: PLL9X3GN6WPOZZ',\n  NULL,\n  NULL,\n  NULL,\n  NULL,\n  NULL\n);",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        -688,
+        976
+      ],
+      "id": "bdb47d3a-adc1-47ac-93b2-27f5ba3c3eba",
+      "name": "Ingestion Facturation Client",
+      "credentials": {
+        "postgres": {
+          "id": "BMh8QYnE2kGIsz2l",
+          "name": "Postgres account data workflows"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO data_administration (\n  id_data_administration,\n  annee,\n  email_professionnel_1,\n  email_professionnel_2,\n  email_entreprise,\n  devise,\n  nom_professionnel,\n  nom_entreprise,\n  adresse_entreprise,\n  adresse_professionnel,\n  montant_loyer,\n  nom_client,\n  adresse_client,\n  produit,\n  prix_unitaire,\n  tva,\n  paiement,\n  charges,\n  adresse_client_mission,\n  nom_client_mission,\n  trajet_client_mission,\n  puissance_fiscal\n) VALUES (\n  'quittance_loyer_1',\n  2025,\n  'rabia.nacim@gmail.com',\n  'nac84.crypto@gmail.com',\n  'rn.block.pro@gmail.com',\n  '€',\n  NULL,\n  'RN-BLOCK EURL',\n  '2 Rue JEHAN ALAIN, 78230, LE PECQ',\n  '2 Rue JEHAN ALAIN, 78230, LE PECQ',\n  500,\n  NULL,\n  NULL,\n  NULL,\n  NULL,\n  NULL,\n  NULL,\n  NULL,\n  NULL,\n  NULL,\n  NULL,\n  NULL\n);",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        -432,
+        976
+      ],
+      "id": "18b7fb5f-226c-436f-92ea-aaed193c73be",
+      "name": "Ingestion Quittance Loyer",
+      "credentials": {
+        "postgres": {
+          "id": "BMh8QYnE2kGIsz2l",
+          "name": "Postgres account data workflows"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO data_administration (\n  id_data_administration,\n  annee,\n  email_professionnel_1,\n  email_professionnel_2,\n  email_entreprise,\n  devise,\n  nom_professionnel,\n  nom_entreprise,\n  adresse_entreprise,\n  adresse_professionnel,\n  montant_loyer,\n  nom_client,\n  adresse_client,\n  produit,\n  prix_unitaire,\n  tva,\n  paiement,\n  charges,\n  adresse_client_mission,\n  nom_client_mission,\n  trajet_client_mission,\n  puissance_fiscal\n) VALUES (\n  'charge_locative_1',\n  2025,\n  'rabia.nacim@gmail.com',\n  'nac84.crypto@gmail.com',\n  'rn.block.pro@gmail.com',\n  '€',\n  'Nacim RABIA',\n  'RN-BLOCK EURL',\n  NULL,\n  NULL,\n  NULL,\n  NULL,\n  NULL,\n  NULL,\n  NULL,\n  NULL,\n  NULL,\n  '{\n  \"charges\": [\n    {\n      \"produit\": \"ELEC + GAZ\",\n      \"prix_unitaire\": 226.00,\n      \"quantite\": 1,\n      \"taux_applique\": 30\n    },\n    {\n      \"produit\": \"CHARGES COPROPRIÉTAIRES\",\n      \"prix_unitaire\": 152.33,\n      \"quantite\": 1,\n      \"taux_applique\": 30\n    },\n    {\n      \"produit\": \"ASSURANCE HABITATION\",\n      \"prix_unitaire\": 28.50,\n      \"quantite\": 1,\n      \"taux_applique\": 30\n    },\n    {\n      \"produit\": \"BOX\",\n      \"prix_unitaire\": 30.99,\n      \"quantite\": 1,\n      \"taux_applique\": 50\n    },\n    {\n      \"produit\": \"FORFAIT MOBILE\",\n      \"prix_unitaire\": 10.99,\n      \"quantite\": 1,\n      \"taux_applique\": 100\n    }\n  ]\n}',\n  NULL,\n  NULL,\n  NULL,\n  NULL\n);",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        -176,
+        976
+      ],
+      "id": "ca464749-5666-4ed0-980e-fa85acef8666",
+      "name": "Ingestion Charges Locatives",
+      "credentials": {
+        "postgres": {
+          "id": "BMh8QYnE2kGIsz2l",
+          "name": "Postgres account data workflows"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO data_administration (\n  id_data_administration,\n  annee,\n  email_professionnel_1,\n  email_professionnel_2,\n  email_entreprise,\n  devise,\n  nom_professionnel,\n  nom_entreprise,\n  adresse_entreprise,\n  adresse_professionnel,\n  montant_loyer,\n  nom_client,\n  adresse_client,\n  produit,\n  prix_unitaire,\n  tva,\n  paiement,\n  charges,\n  adresse_client_mission,\n  nom_client_mission,\n  trajet_client_mission,\n  puissance_fiscal\n) VALUES (\n  'frai_kilometrique_1',\n  2025,\n  'rabia.nacim@gmail.com',\n  'nac84.crypto@gmail.com',\n  'rn.block.pro@gmail.com',\n  NULL,\n  'Nacim RABIA',\n  NULL,\n  NULL,\n  NULL,\n  NULL,\n  NULL,\n  NULL,\n  NULL,\n  NULL,\n  NULL,\n  NULL,\n  NULL,\n  '12 Rue Villiot, 75012 Paris',\n  'CA-TS',\n  42,\n  5\n);",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        80,
+        976
+      ],
+      "id": "41226b39-8e19-4869-bed8-0d962d69e2b6",
+      "name": "Ingestion Frais Kilometriques",
+      "credentials": {
+        "postgres": {
+          "id": "BMh8QYnE2kGIsz2l",
+          "name": "Postgres account data workflows"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO \"kilometres_parcourus\" (\"mois\", \"annee\", \"total_kilometres_parcourus\")\nVALUES \n    (0, 2025, 0.0),\n    (1, 2025, 546.0),\n    (2, 2025, 1050.0),\n    (3, 2025, 1596.0),\n    (4, 2025, 2226.0),\n    (5, 2025, 2772.0),\n    (6, 2025, 3318.0),\n    (7, 2025, 3948.0),\n    (8, 2025, 4578.0),\n    (9, 2025, 5292.0),\n    (10, 2025, 6090.0),\n    (11, 2025, NULL),\n    (12, 2025, NULL)\nON CONFLICT (\"mois\", \"annee\") \nDO UPDATE SET \"total_kilometres_parcourus\" = EXCLUDED.\"total_kilometres_parcourus\";",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        320,
+        976
+      ],
+      "id": "de23b023-d45e-44b4-88ec-b4c39be89493",
+      "name": "Ingestion Kilomètres Parcourus",
+      "credentials": {
+        "postgres": {
+          "id": "BMh8QYnE2kGIsz2l",
+          "name": "Postgres account data workflows"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Calculator": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create_Facture_Pdf": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send_Mail": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create_Quittance_Pdf": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create_Charges_Locatives_Pdf": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres Chat Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Telegram1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram1": {
+      "main": [
+        [
+          {
+            "node": "OpenAI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create_Frais_Kilometriques_Pdf": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code": {
+      "main": [
+        [
+          {
+            "node": "If1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram Trigger": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram": {
+      "main": [
+        []
+      ]
+    },
+    "If1": {
+      "main": [
+        [
+          {
+            "node": "Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Edit Fields1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get_Infos_Quittance_Loyer": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get_Infos_Charges_Locatives": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get_Infos_Facture_Client": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Schema": {
+      "main": [
+        []
+      ]
+    },
+    "Get_Infos_Frais_Kilometriques": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Paris",
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": "NbQBnwGaesrDvsDT"
+  },
+  "versionId": "6b3e996a-6522-448f-b867-9b7857a37966",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "1cd6765b3c3f04c973045627d34190af5810018612db34e4aca4e846ff5d8581"
+  },
+  "id": "NbQBnwGaesrDvsDT",
+  "tags": [
+    {
+      "updatedAt": "2025-04-01T20:54:51.991Z",
+      "createdAt": "2025-04-01T20:54:51.991Z",
+      "id": "RE3G02uTke2iAT6s",
+      "name": "pro"
+    },
+    {
+      "updatedAt": "2025-04-01T20:53:58.281Z",
+      "createdAt": "2025-04-01T20:53:58.281Z",
+      "id": "vS7KHLB5g7i2hvN6",
+      "name": "prod"
+    },
+    {
+      "updatedAt": "2025-04-01T20:54:18.541Z",
+      "createdAt": "2025-04-01T20:54:18.541Z",
+      "id": "emblIobKokPD44Zj",
+      "name": "compta"
+    }
+  ]
+}

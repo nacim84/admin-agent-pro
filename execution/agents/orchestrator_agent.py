@@ -6,8 +6,15 @@ from langchain_core.output_parsers import JsonOutputParser
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 from execution.core.config import get_settings
 from execution.prompts.orchestrator_prompts import ORCHESTRATOR_SYSTEM_PROMPT
-from execution.tools.db_manager import DatabaseManager
-from typing import Any, Dict, TypedDict
+from execution.tools import (
+    CalculatorTool,
+    DatabaseQueryTool,
+    EmailSenderTool,
+    WhisperTranscriptionTool,
+    MarkdownCleanerTool,
+    DatabaseManager
+)
+from typing import Any, Dict, TypedDict, List
 import logging
 
 logger = logging.getLogger(__name__)
@@ -17,33 +24,38 @@ class IntentResult(TypedDict):
     confidence: float
     extracted_data: Dict[str, Any]
     reply_text: str | None
+    tool_calls: List[Dict[str, Any]] | None
 
 class OrchestratorAgent:
     """
-    Agent principal qui analyse les messages utilisateurs
-    et les dirige vers le bon agent spécialisé.
+    Agent principal qui analyse les messages utilisateurs,
+    utilise des outils et dirige vers le bon agent spécialisé.
     """
 
     def __init__(self):
         self.settings = get_settings()
         self.db = DatabaseManager()
         
-        # Initialisation du LLM via OpenRouter
+        # Tools
+        self.tools = [
+            CalculatorTool(),
+            DatabaseQueryTool(),
+            EmailSenderTool(),
+            WhisperTranscriptionTool(),
+            MarkdownCleanerTool()
+        ]
+        
+        # Initialisation du LLM via OpenRouter avec support Tools
         self.llm = ChatOpenAI(
             base_url="https://openrouter.ai/api/v1",
             api_key=self.settings.openrouter_api_key,
             model=self.settings.openrouter_model,
             temperature=0,
-            model_kwargs={
-                "response_format": {"type": "json_object"}
-            },
             default_headers={
                 "HTTP-Referer": "https://github.com/admin-agent-pro",
                 "X-Title": self.settings.app_name,
             }
-        )
-        
-        self.parser = JsonOutputParser()
+        ).bind_tools(self.tools)
         
         self.prompt = ChatPromptTemplate.from_messages([
             ("system", ORCHESTRATOR_SYSTEM_PROMPT),
@@ -51,11 +63,11 @@ class OrchestratorAgent:
             ("user", "{input}")
         ])
         
-        self.chain = self.prompt | self.llm | self.parser
+        self.chain = self.prompt | self.llm
 
     async def analyze_message(self, text: str, user_id: int) -> IntentResult:
         """
-        Analyse un message texte et retourne l'intention et les données.
+        Analyse un message texte et retourne l'intention, les données et les appels d'outils.
         """
         try:
             logger.info(f"🧠 Analyse du message: '{text[:50]}...'")
@@ -71,23 +83,45 @@ class OrchestratorAgent:
                 else:
                     history_messages.append(AIMessage(content=msg["content"]))
             
-            result = await self.chain.ainvoke({
+            response = await self.chain.ainvoke({
                 "input": text,
                 "history": history_messages
             })
             
-            # Normalisation des résultats
-            intent = result.get("intent", "chat")
-            data = result.get("extracted_data", {})
-            reply = result.get("reply_text")
+            # Analyse de la réponse (Tool Calls ou JSON)
+            intent = "chat"
+            data = {}
+            reply = None
+            tool_calls = []
             
+            if response.tool_calls:
+                tool_calls = response.tool_calls
+                logger.info(f"🛠️ Tool calls détectés: {[tc['name'] for tc in tool_calls]}")
+            
+            # Si le modèle a répondu par du texte qui pourrait être du JSON (cas fallback)
+            content = response.content
+            if content and "{" in content:
+                try:
+                    import json
+                    # Extraire le JSON si entouré de texte
+                    json_str = content[content.find("{"):content.rfind("}")+1]
+                    result = json.loads(json_str)
+                    intent = result.get("intent", "chat")
+                    data = result.get("extracted_data", {})
+                    reply = result.get("reply_text")
+                except Exception:
+                    reply = content
+            else:
+                reply = content
+
             logger.info(f"🎯 Intention détectée: {intent}")
             
             return {
                 "intent": intent,
-                "confidence": result.get("confidence", 0.0),
+                "confidence": 1.0 if not tool_calls else 0.5,
                 "extracted_data": data,
-                "reply_text": reply
+                "reply_text": reply,
+                "tool_calls": tool_calls
             }
             
         except Exception as e:

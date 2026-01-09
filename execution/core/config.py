@@ -23,7 +23,24 @@ class Settings(BaseSettings):
 
     # Telegram
     telegram_bot_token: str
-    telegram_admin_users: list[int]  # Liste des user_id autorisés
+    telegram_admin_users_raw: str = "[5032994206]" # Field to receive from env
+
+    @property
+    def telegram_admin_users(self) -> list[int]:
+        import json
+        try:
+            return json.loads(self.telegram_admin_users_raw)
+        except:
+            return []
+
+    # SMTP Configuration
+    smtp_host: str = "smtp.gmail.com"
+    smtp_port: int = 587
+    smtp_user: str
+    smtp_password: str
+
+    # OpenAI Configuration
+    openai_api_key: Optional[str] = None
 
     # Business Info (pour documents)
     company_name: str

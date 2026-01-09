@@ -44,6 +44,12 @@ dependencies = [
 
     # Date handling (French locale)
     "babel>=2.14.0",
+
+    # Email
+    "aiosmtplib>=3.0.0",
+
+    # OpenAI (Whisper)
+    "openai>=1.58.1",
 ]
 
 [project.optional-dependencies]
