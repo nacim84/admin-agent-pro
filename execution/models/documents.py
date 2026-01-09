@@ -241,6 +241,9 @@ class RentalCharges(BaseModel):
 
     # Charges
     charges: list[ChargeItem] = Field(..., min_items=1, description="Liste des charges")
+    
+    # Payments
+    provisions_amount: Decimal = Field(default=Decimal("0"), ge=0, description="Total des provisions versées")
 
     @field_validator("period_end")
     @classmethod
@@ -254,3 +257,8 @@ class RentalCharges(BaseModel):
     def total_charges(self) -> Decimal:
         """Calcule le total des charges."""
         return sum(charge.amount for charge in self.charges)
+    
+    @property
+    def regularization_amount(self) -> Decimal:
+        """Calcule le montant de la régularisation (Charges réelles - Provisions)."""
+        return self.total_charges - self.provisions_amount

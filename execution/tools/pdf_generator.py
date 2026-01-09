@@ -428,3 +428,112 @@ class PDFGenerator:
         c.save()
         logger.info(f"✅ Quittance de loyer PDF générée: {filepath}")
         return filepath
+
+    def generate_rental_charges_pdf(self, charges: RentalCharges, company_info: dict) -> Path:
+        """Génère un PDF de décompte de charges locatives."""
+        filename = f"charges_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+        filepath = self.output_dir / filename
+
+        c = canvas.Canvas(str(filepath), pagesize=A4)
+
+        # Titre
+        y = self.height - 3*cm
+        c.setFont("Helvetica-Bold", 20)
+        c.drawCentredString(self.width / 2, y, "DÉCOMPTE DE CHARGES LOCATIVES")
+
+        # Période
+        y -= 1.5*cm
+        c.setFont("Helvetica-Bold", 12)
+        periode = f"Période du {charges.period_start.strftime('%d/%m/%Y')} au {charges.period_end.strftime('%d/%m/%Y')}"
+        c.drawCentredString(self.width / 2, y, periode)
+
+        # Propriétaire
+        y -= 2*cm
+        c.setFont("Helvetica-Bold", 11)
+        c.drawString(2*cm, y, "Bailleur:")
+
+        y -= 0.6*cm
+        c.setFont("Helvetica", 10)
+        c.drawString(2*cm, y, company_info["name"])
+        c.drawString(2*cm, y-0.5*cm, company_info["address"])
+
+        # Locataire
+        c.setFont("Helvetica-Bold", 11)
+        c.drawString(12*cm, y, "Locataire:")
+
+        c.setFont("Helvetica", 10)
+        c.drawString(12*cm, y-0.6*cm, charges.tenant_name)
+
+        # Bien loué
+        y -= 2.5*cm
+        c.setFont("Helvetica-Bold", 11)
+        c.drawString(2*cm, y, "Bien loué:")
+        
+        y -= 0.6*cm
+        c.setFont("Helvetica", 10)
+        c.drawString(2*cm, y, charges.property_address)
+
+        # Tableau des charges
+        y -= 2*cm
+        c.setFont("Helvetica-Bold", 11)
+        c.drawString(2*cm, y, "Détail des charges réelles")
+
+        y -= 1*cm
+        c.setFont("Helvetica-Bold", 10)
+        c.drawString(2*cm, y, "Libellé")
+        c.drawString(16*cm, y, "Montant")
+
+        y -= 0.3*cm
+        c.line(2*cm, y, 19*cm, y)
+
+        y -= 0.7*cm
+        c.setFont("Helvetica", 10)
+
+        for item in charges.charges:
+            c.drawString(2*cm, y, item.label[:60])
+            c.drawString(16*cm, y, f"{float(item.amount):.2f} €")
+            y -= 0.6*cm
+
+        # Total charges réelles
+        y -= 0.5*cm
+        c.line(14*cm, y, 19*cm, y)
+        y -= 0.7*cm
+        c.setFont("Helvetica-Bold", 11)
+        c.drawString(10*cm, y, "Total charges réelles:")
+        c.drawString(16*cm, y, f"{float(charges.total_charges):.2f} €")
+
+        # Provisions
+        y -= 1*cm
+        c.setFont("Helvetica", 11)
+        c.drawString(10*cm, y, "Provisions versées:")
+        c.drawString(16*cm, y, f"{float(charges.provisions_amount):.2f} €")
+
+        # Régularisation
+        y -= 1.5*cm
+        c.setFont("Helvetica-Bold", 13)
+        c.drawString(10*cm, y, "RÉGULARISATION:")
+        
+        regul = charges.regularization_amount
+        c.drawString(16*cm, y, f"{float(regul):.2f} €")
+
+        y -= 1*cm
+        c.setFont("Helvetica-Oblique", 10)
+        if regul > 0:
+            c.drawString(2*cm, y, f"Solde à payer par le locataire: {float(regul):.2f} €")
+        elif regul < 0:
+            c.drawString(2*cm, y, f"Solde à rembourser au locataire: {float(abs(regul)):.2f} €")
+        else:
+            c.drawString(2*cm, y, "Compte équilibré (pas de régularisation).")
+
+        # Note justificatifs
+        y -= 2*cm
+        c.setFont("Helvetica", 9)
+        c.drawString(2*cm, y, "Les justificatifs des charges sont tenus à votre disposition sur demande.")
+
+        # Signature
+        y -= 2*cm
+        c.drawString(12*cm, y, f"Fait le {datetime.now().strftime('%d/%m/%Y')}")
+
+        c.save()
+        logger.info(f"✅ Décompte charges PDF généré: {filepath}")
+        return filepath

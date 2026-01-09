@@ -198,6 +198,78 @@ class DatabaseManager:
 
             return f"DEV-{year}-{seq:04d}"
 
+    async def get_next_mileage_number(self, year: int) -> str:
+        """
+        Génère le prochain numéro de note de frais pour l'année donnée.
+
+        Format: KM-YYYY-NNNN (ex: KM-2024-0001)
+        """
+        async with self.async_session_maker() as session:
+            result = await session.execute(
+                select(Document.document_number)
+                .where(Document.document_type == DocumentType.MILEAGE)
+                .where(Document.document_number.like(f"KM-{year}-%"))
+                .order_by(Document.document_number.desc())
+                .limit(1)
+            )
+
+            last_number = result.scalar_one_or_none()
+
+            if last_number:
+                seq = int(last_number.split("-")[2]) + 1
+            else:
+                seq = 1
+
+            return f"KM-{year}-{seq:04d}"
+
+    async def get_next_rent_receipt_number(self, year: int) -> str:
+        """
+        Génère le prochain numéro de quittance pour l'année donnée.
+
+        Format: QUIT-YYYY-NNNN (ex: QUIT-2024-0001)
+        """
+        async with self.async_session_maker() as session:
+            result = await session.execute(
+                select(Document.document_number)
+                .where(Document.document_type == DocumentType.RENT_RECEIPT)
+                .where(Document.document_number.like(f"QUIT-{year}-%"))
+                .order_by(Document.document_number.desc())
+                .limit(1)
+            )
+
+            last_number = result.scalar_one_or_none()
+
+            if last_number:
+                seq = int(last_number.split("-")[2]) + 1
+            else:
+                seq = 1
+
+            return f"QUIT-{year}-{seq:04d}"
+
+    async def get_next_rental_charges_number(self, year: int) -> str:
+        """
+        Génère le prochain numéro de régularisation pour l'année donnée.
+
+        Format: REGUL-YYYY-NNNN (ex: REGUL-2024-0001)
+        """
+        async with self.async_session_maker() as session:
+            result = await session.execute(
+                select(Document.document_number)
+                .where(Document.document_type == DocumentType.RENTAL_CHARGES)
+                .where(Document.document_number.like(f"REGUL-{year}-%"))
+                .order_by(Document.document_number.desc())
+                .limit(1)
+            )
+
+            last_number = result.scalar_one_or_none()
+
+            if last_number:
+                seq = int(last_number.split("-")[2]) + 1
+            else:
+                seq = 1
+
+            return f"REGUL-{year}-{seq:04d}"
+
     async def get_document_count_by_type(self, user_id: int) -> dict[str, int]:
         """Retourne le nombre de documents par type pour un utilisateur."""
         async with self.async_session_maker() as session:
