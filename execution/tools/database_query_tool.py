@@ -3,6 +3,7 @@
 from typing import Dict, Any, Optional, List
 from langchain_core.tools import BaseTool
 from sqlalchemy import select
+from datetime import datetime
 from execution.models.database import DataAdministration, KilometresParcourus
 from execution.tools.db_manager import DatabaseManager
 import logging
@@ -31,6 +32,10 @@ class DatabaseQueryTool(BaseTool):
         """Execute query asynchronously."""
         try:
             db = DatabaseManager()
+            # Ensure annee is present in filters, default to current year
+            if "annee" not in filters:
+                filters["annee"] = datetime.now().year
+                
             if query_type == "facture_info":
                 return await self._get_facture_info(db, **filters)
             elif query_type == "charges_info":

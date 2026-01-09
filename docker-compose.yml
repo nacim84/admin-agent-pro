@@ -11,7 +11,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U admin -d admin_agent"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-admin} -d ${POSTGRES_DB:-admin_agent}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -34,7 +34,7 @@ services:
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
       OPENROUTER_MODEL: ${OPENROUTER_MODEL:-google/gemini-2.0-flash-001}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
-      TELEGRAM_ADMIN_USERS: "[5032994206]"
+      TELEGRAM_ADMIN_USERS_RAW: ${TELEGRAM_ADMIN_USERS_RAW:-[5032994206]}
 
       # Company Info
       COMPANY_NAME: ${COMPANY_NAME:-My Company}
@@ -42,6 +42,12 @@ services:
       COMPANY_ADDRESS: ${COMPANY_ADDRESS:-123 Street, City}
       COMPANY_TVA_NUMBER: ${COMPANY_TVA_NUMBER:-FR00000000000}
       
+      # SMTP Config
+      SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
+
       # App Config
       TMP_DIR: /app/.tmp
 

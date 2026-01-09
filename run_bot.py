@@ -11,7 +11,7 @@ from execution.telegram_bot import AdminBot
 
 if __name__ == "__main__":
     print("=" * 50)
-    print("🤖 Admin Agent Pro - Bot Telegram")
+    print("Admin Agent Pro - Bot Telegram")
     print("=" * 50)
     print()
 
@@ -19,11 +19,11 @@ if __name__ == "__main__":
     import asyncio
     from execution.init_db import main as init_db_main
     
-    print("🔄 Vérification de la base de données...")
+    print("Verification de la base de données...")
     try:
         asyncio.run(init_db_main())
     except Exception as e:
-        print(f"❌ Erreur critique lors de l'initialisation de la DB: {e}")
+        print(f"Erreur critique lors de l'initialisation de la DB: {e}")
         sys.exit(1)
 
     bot = AdminBot()

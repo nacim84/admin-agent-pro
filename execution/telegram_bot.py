@@ -643,10 +643,13 @@ SIRET: {self.settings.company_siret}
 
         # Router vers la bonne commande
         if intent == "chat":
-            reply = analysis.get("reply_text") or "Je suis là pour vous aider avec vos documents administratifs."
+            reply = analysis.get("reply_text")
+            if not reply or str(reply).strip() == "":
+                reply = "Je suis là pour vous aider avec vos documents administratifs."
+            
             # 2. Sauvegarder la réponse assistant
             await self.db.add_chat_message(user_id, "assistant", reply)
-            await update.message.reply_text(reply)
+            await update.message.reply_text(reply, parse_mode="HTML")
             
         elif intent == "invoice":
             context.user_data["pre_extracted_data"] = data
