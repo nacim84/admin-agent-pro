@@ -1,7 +1,7 @@
 """Modèles de base de données SQLAlchemy."""
 
-from sqlalchemy import Column, String, Integer, DateTime, Enum, JSON, Index
-from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy import Column, Integer, String, Date, JSON, ForeignKey, DateTime, Enum, Text, BigInteger
 from datetime import datetime
 import enum
 
@@ -20,39 +20,32 @@ class DocumentType(enum.Enum):
 
 
 class Document(Base):
-    """
-    Table principale pour stocker tous les documents générés.
-
-    Stocke les données sous forme JSON pour flexibilité,
-    avec des colonnes indexées pour les recherches rapides.
-    """
-
+    """Table des documents générés."""
     __tablename__ = "documents"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    document_type = Column(Enum(DocumentType), nullable=False, index=True)
-    document_number = Column(String(100), unique=True, nullable=False, index=True)
-    created_at = Column(DateTime, default=datetime.now, nullable=False, index=True)
-    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, nullable=False)
-
-    # Données du document (modèle Pydantic sérialisé en JSON)
-    data = Column(JSON, nullable=False)
-
-    # Fichiers générés
-    pdf_path = Column(String(500), nullable=True)
-    telegram_file_id = Column(String(200), nullable=True)
-
-    # Utilisateur
-    user_id = Column(Integer, nullable=False, index=True)
-
-    def __repr__(self) -> str:
-        """Représentation textuelle."""
-        return (
-            f"<Document(id={self.id}, type={self.document_type.value}, "
-            f"number={self.document_number}, user={self.user_id})>"
-        )
+    id = Column(Integer, primary_key=True, index=True)
+    document_type = Column(Enum(DocumentType), index=True)
+    document_number = Column(String, unique=True, index=True)
+    user_id = Column(BigInteger, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    # Stockage des données structurées (JSON)
+    data = Column(JSON)
+    
+    # Chemin du fichier PDF généré
+    pdf_path = Column(String, nullable=True)
+    
+    # ID du fichier Telegram (pour renvoi rapide)
+    telegram_file_id = Column(String, nullable=True)
 
 
-# Créer des index composites pour optimiser les requêtes
-Index("idx_user_type", Document.user_id, Document.document_type)
-Index("idx_user_created", Document.user_id, Document.created_at.desc())
+class ChatHistory(Base):
+    """Table de l'historique des conversations."""
+    __tablename__ = "chat_history"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(BigInteger, index=True)
+    role = Column(String)  # "user" ou "assistant"
+    content = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow)
+

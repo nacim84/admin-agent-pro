@@ -200,6 +200,8 @@ def validate_user_access(user_id: int, allowed_users: list[int]) -> bool:
     Returns:
         True si l'utilisateur est autorisé
     """
+    logger.info(f"Checking access for {user_id} against {allowed_users}")
+    
     is_allowed = user_id in allowed_users
     if not is_allowed:
         logger.warning(f"Accès refusé pour user_id: {user_id}")

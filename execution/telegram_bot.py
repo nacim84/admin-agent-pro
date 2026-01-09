@@ -1,4 +1,4 @@
-"""Bot Telegram pour l'agent administratif."""
+"Bot Telegram pour l'agent administratif."
 
 from telegram import Update
 from telegram.ext import (
@@ -14,6 +14,7 @@ from execution.agents.quote_agent import QuoteAgent
 from execution.agents.mileage_agent import MileageAgent
 from execution.agents.rent_receipt_agent import RentReceiptAgent
 from execution.agents.rental_charges_agent import RentalChargesAgent
+from execution.agents.orchestrator_agent import OrchestratorAgent
 from execution.agents.base_admin_agent import AdminAgentState
 from execution.tools.telegram_helpers import (
     send_document_with_preview,
@@ -42,6 +43,7 @@ class AdminBot:
         """Initialise le bot avec la configuration."""
         self.settings = get_settings()
         self.db = DatabaseManager()
+        self.orchestrator = OrchestratorAgent()
 
         # Créer l'application
         self.app = Application.builder().token(self.settings.telegram_bot_token).build()
@@ -65,9 +67,9 @@ class AdminBot:
         self.app.add_handler(CommandHandler("quittance", self.cmd_rent_receipt))
         self.app.add_handler(CommandHandler("charges", self.cmd_rental_charges))
 
-        # Handler pour les messages non reconnus
+        # Handler pour les messages textuels (IA Conversationnelle)
         self.app.add_handler(
-            MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_unknown)
+            MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_natural_language)
         )
 
         logger.info("✅ Handlers enregistrés")
@@ -164,48 +166,54 @@ SIRET: {self.settings.company_siret}
             await update.message.reply_text("❌ Accès non autorisé.")
             return
 
-        # Parser les arguments
-        args = parse_command_args(update.message.text)
+        # Vérifier si on a des données pré-extraites par l'IA
+        pre_extracted = context.user_data.pop("pre_extracted_data", None)
+        
+        if pre_extracted is not None:
+            # Mode IA
+            input_data = pre_extracted
+            # Validation minimale pour le mode IA
+            if not input_data.get("client_name") or not input_data.get("items"):
+                await update.message.reply_text("⚠️ J'ai compris que vous voulez une facture, mais je n'ai pas trouvé le nom du client ou le montant. Pouvez-vous reformuler ?\n\nExemple : 'Facture pour Apple de 500€'")
+                return
+        else:
+            # Mode Commande Classique
+            args = parse_command_args(update.message.text)
 
-        if not args.get("client") or not args.get("montant"):
-            await update.message.reply_text(
-                "❌ **Arguments manquants**\n\n"
-                "Usage:\n"
-                "`/facture client=\"Nom Client\" montant=1500 description=\"Service\"`\n\n"
-                "Arguments requis:\n"
-                "• `client` - Nom du client\n"
-                "• `montant` - Montant HT\n\n"
-                "Arguments optionnels:\n"
-                "• `description` - Description de la prestation\n"
-                "• `adresse` - Adresse du client\n"
-                "• `siret` - SIRET du client",
-                parse_mode="Markdown",
-            )
-            return
+            if not args.get("client") or not args.get("montant"):
+                await update.message.reply_text(
+                    "❌ **Arguments manquants**\n\n"
+                    "Usage:\n"
+                    "`/facture client=\"Nom Client\" montant=1500 description=\"Service\"`",
+                    parse_mode="Markdown",
+                )
+                return
+            
+            input_data = {
+                "client_name": args["client"],
+                "client_address": args.get("adresse", "Adresse non fournie"),
+                "client_siret": args.get("siret"),
+                "items": [
+                    {
+                        "description": args.get("description", "Prestation"),
+                        "quantity": 1,
+                        "unit_price": float(args["montant"]),
+                        "vat_rate": 0.20,
+                    }
+                ],
+                "payment_conditions": args.get("conditions", "Paiement à 30 jours"),
+                "notes": args.get("notes"),
+            }
 
         await send_typing_action(update, context)
-        await update.message.reply_text("⏳ Génération de la facture en cours...")
+        msg = await update.message.reply_text("⏳ Génération de la facture en cours...")
 
         try:
-            # Préparer l'état initial
+            # Préparer l'état
             state: AdminAgentState = {
                 "user_id": user_id,
                 "request_type": "invoice",
-                "input_data": {
-                    "client_name": args["client"],
-                    "client_address": args.get("adresse", "Adresse non fournie"),
-                    "client_siret": args.get("siret"),
-                    "items": [
-                        {
-                            "description": args.get("description", "Prestation"),
-                            "quantity": 1,
-                            "unit_price": float(args["montant"]),
-                            "vat_rate": 0.20,
-                        }
-                    ],
-                    "payment_conditions": args.get("conditions", "Paiement à 30 jours"),
-                    "notes": args.get("notes"),
-                },
+                "input_data": input_data,
                 "validated_data": None,
                 "pdf_path": None,
                 "db_record_id": None,
@@ -250,25 +258,41 @@ SIRET: {self.settings.company_siret}
             await update.message.reply_text("❌ Accès non autorisé.")
             return
 
-        # Parser les arguments
-        args = parse_command_args(update.message.text)
+        # Vérifier si on a des données pré-extraites par l'IA
+        pre_extracted = context.user_data.pop("pre_extracted_data", None)
+        
+        if pre_extracted is not None:
+            input_data = pre_extracted
+            if not input_data.get("client_name") or not input_data.get("items"):
+                await update.message.reply_text("⚠️ Je n'ai pas trouvé le client ou les articles pour le devis. Pouvez-vous préciser ?")
+                return
+        else:
+            args = parse_command_args(update.message.text)
 
-        if not args.get("client") or not args.get("montant"):
-            await update.message.reply_text(
-                "❌ **Arguments manquants**\n\n"
-                "Usage:\n"
-                "`/devis client=\"Nom Client\" montant=1500 description=\"Service\"`\n\n"
-                "Arguments requis:\n"
-                "• `client` - Nom du client\n"
-                "• `montant` - Montant HT\n\n"
-                "Arguments optionnels:\n"
-                "• `description` - Description\n"
-                "• `validite` - Validité en jours (défaut: 30)\n"
-                "• `adresse` - Adresse client\n"
-                "• `siret` - SIRET client",
-                parse_mode="Markdown",
-            )
-            return
+            if not args.get("client") or not args.get("montant"):
+                await update.message.reply_text(
+                    "❌ **Arguments manquants**\n\n"
+                    "Usage:\n"
+                    "`/devis client=\"Nom Client\" montant=1500 description=\"Service\"`",
+                    parse_mode="Markdown",
+                )
+                return
+            
+            input_data = {
+                "client_name": args["client"],
+                "client_address": args.get("adresse", "Adresse non fournie"),
+                "client_siret": args.get("siret"),
+                "items": [
+                    {
+                        "description": args.get("description", "Prestation"),
+                        "quantity": 1,
+                        "unit_price": float(args["montant"]),
+                        "vat_rate": 0.20,
+                    }
+                ],
+                "validity_days": int(args.get("validite", 30)),
+                "notes": args.get("notes"),
+            }
 
         await send_typing_action(update, context)
         await update.message.reply_text("⏳ Génération du devis en cours...")
@@ -278,21 +302,7 @@ SIRET: {self.settings.company_siret}
             state: AdminAgentState = {
                 "user_id": user_id,
                 "request_type": "quote",
-                "input_data": {
-                    "client_name": args["client"],
-                    "client_address": args.get("adresse", "Adresse non fournie"),
-                    "client_siret": args.get("siret"),
-                    "items": [
-                        {
-                            "description": args.get("description", "Prestation"),
-                            "quantity": 1,
-                            "unit_price": float(args["montant"]),
-                            "vat_rate": 0.20,
-                        }
-                    ],
-                    "validity_days": int(args.get("validite", 30)),
-                    "notes": args.get("notes"),
-                },
+                "input_data": input_data,
                 "validated_data": None,
                 "pdf_path": None,
                 "db_record_id": None,
@@ -337,26 +347,38 @@ SIRET: {self.settings.company_siret}
             await update.message.reply_text("❌ Accès non autorisé.")
             return
 
-        # Parser les arguments
-        args = parse_command_args(update.message.text)
+        pre_extracted = context.user_data.pop("pre_extracted_data", None)
+        
+        if pre_extracted is not None:
+            input_data = pre_extracted
+            if not input_data.get("trips"):
+                 await update.message.reply_text("⚠️ Je n'ai pas trouvé les détails du trajet. Précisez Départ, Arrivée et KM.")
+                 return
+        else:
+            args = parse_command_args(update.message.text)
 
-        if not args.get("depart") or not args.get("arrivee") or not args.get("km"):
-            await update.message.reply_text(
-                "❌ **Arguments manquants**\n\n"
-                "Usage:\n"
-                "`/frais_km depart=\"Paris\" arrivee=\"Lyon\" km=460 motif=\"Client X\"`\n\n"
-                "Arguments requis:\n"
-                "• `depart` - Ville de départ\n"
-                "• `arrivee` - Ville d'arrivée\n"
-                "• `km` - Distance\n"
-                "• `motif` - Motif du déplacement\n\n"
-                "Arguments optionnels:\n"
-                "• `date` - Date (YYYY-MM-DD)\n"
-                "• `vehicule` - voiture/moto/scooter (défaut: voiture)\n"
-                "• `cv` - Puissance fiscale (défaut: 5)",
-                parse_mode="Markdown",
-            )
-            return
+            if not args.get("depart") or not args.get("arrivee") or not args.get("km"):
+                await update.message.reply_text(
+                    "❌ **Arguments manquants**\n\n"
+                    "Usage:\n"
+                    "`/frais_km depart=\"Paris\" arrivee=\"Lyon\" km=460 motif=\"Client X\"`",
+                    parse_mode="Markdown",
+                )
+                return
+            
+            input_data = {
+                "trips": [
+                    {
+                        "travel_date": args.get("date"),
+                        "start_location": args["depart"],
+                        "end_location": args["arrivee"],
+                        "distance_km": float(args["km"]),
+                        "purpose": args.get("motif", "Déplacement pro"),
+                        "vehicle_type": args.get("vehicule", "voiture"),
+                        "fiscal_power": int(args.get("cv", 5)),
+                    }
+                ]
+            }
 
         await send_typing_action(update, context)
         await update.message.reply_text("⏳ Génération de la note de frais en cours...")
@@ -366,19 +388,7 @@ SIRET: {self.settings.company_siret}
             state: AdminAgentState = {
                 "user_id": user_id,
                 "request_type": "mileage",
-                "input_data": {
-                    "trips": [
-                        {
-                            "travel_date": args.get("date"),
-                            "start_location": args["depart"],
-                            "end_location": args["arrivee"],
-                            "distance_km": float(args["km"]),
-                            "purpose": args.get("motif", "Déplacement pro"),
-                            "vehicle_type": args.get("vehicule", "voiture"),
-                            "fiscal_power": int(args.get("cv", 5)),
-                        }
-                    ]
-                },
+                "input_data": input_data,
                 "validated_data": None,
                 "pdf_path": None,
                 "db_record_id": None,
@@ -426,27 +436,34 @@ SIRET: {self.settings.company_siret}
             await update.message.reply_text("❌ Accès non autorisé.")
             return
 
-        # Parser les arguments
-        args = parse_command_args(update.message.text)
+        pre_extracted = context.user_data.pop("pre_extracted_data", None)
         
-        # Args requis minimaux: locataire, montant
-        if not args.get("locataire") or not args.get("montant"):
-            await update.message.reply_text(
-                "❌ **Arguments manquants**\n\n"
-                "Usage:\n"
-                "`/quittance locataire=\"Jean Dupont\" montant=800 charges=50 mois=1`\n\n"
-                "Arguments requis:\n"
-                "• `locataire` - Nom du locataire\n"
-                "• `montant` - Montant loyer HC\n\n"
-                "Arguments optionnels:\n"
-                "• `charges` - Montant charges (défaut: 0)\n"
-                "• `adresse` - Adresse locataire\n"
-                "• `mois` - Mois (1-12)\n"
-                "• `annee` - Année\n"
-                "• `paiement` - virement/chèque...",
-                parse_mode="Markdown",
-            )
-            return
+        if pre_extracted is not None:
+            input_data = pre_extracted
+            if not input_data.get("tenant_name") or not input_data.get("rent_amount"):
+                await update.message.reply_text("⚠️ Il manque le nom du locataire ou le montant du loyer.")
+                return
+        else:
+            args = parse_command_args(update.message.text)
+            
+            if not args.get("locataire") or not args.get("montant"):
+                await update.message.reply_text(
+                    "❌ **Arguments manquants**\n\n"
+                    "Usage:\n"
+                    "`/quittance locataire=\"Jean Dupont\" montant=800 charges=50 mois=1`",
+                    parse_mode="Markdown",
+                )
+                return
+
+            input_data = {
+                "tenant_name": args["locataire"],
+                "tenant_address": args.get("adresse", "Adresse à compléter"),
+                "rent_amount": float(args["montant"]),
+                "charges_amount": float(args.get("charges", 0)),
+                "period_month": int(args.get("mois", date.today().month)),
+                "period_year": int(args.get("annee", date.today().year)),
+                "payment_method": args.get("paiement", "virement"),
+            }
 
         await send_typing_action(update, context)
         await update.message.reply_text("⏳ Génération de la quittance en cours...")
@@ -456,15 +473,7 @@ SIRET: {self.settings.company_siret}
             state: AdminAgentState = {
                 "user_id": user_id,
                 "request_type": "rent_receipt",
-                "input_data": {
-                    "tenant_name": args["locataire"],
-                    "tenant_address": args.get("adresse", "Adresse à compléter"),
-                    "rent_amount": float(args["montant"]),
-                    "charges_amount": float(args.get("charges", 0)),
-                    "period_month": int(args.get("mois", date.today().month)),
-                    "period_year": int(args.get("annee", date.today().year)),
-                    "payment_method": args.get("paiement", "virement"),
-                },
+                "input_data": input_data,
                 "validated_data": None,
                 "pdf_path": None,
                 "db_record_id": None,
@@ -511,35 +520,25 @@ SIRET: {self.settings.company_siret}
             await update.message.reply_text("❌ Accès non autorisé.")
             return
 
-        # Parser les arguments
-        args = parse_command_args(update.message.text)
+        pre_extracted = context.user_data.pop("pre_extracted_data", None)
         
-        # Args requis: locataire, total ou liste
-        # Pour simplifier, on permet à l'utilisateur de donner un total global qui sera mis dans "Charges diverses"
-        # ou s'il utilise le NLP complet, l'agent extraira les détails.
-        
-        if not args.get("locataire") or not args.get("montant"):
-            await update.message.reply_text(
-                "❌ **Arguments manquants**\n\n"
-                "Usage:\n"
-                "`/charges locataire=\"Jean Dupont\" montant=450 provisions=400 annee=2023`\n\n"
-                "Arguments requis:\n"
-                "• `locataire` - Nom du locataire\n"
-                "• `montant` - Montant total charges réelles\n\n"
-                "Arguments optionnels:\n"
-                "• `provisions` - Montant provisions versées (défaut: 0)\n"
-                "• `adresse` - Adresse bien\n"
-                "• `annee` - Année (défaut: année précédente)\n"
-                "• `debut` - Date début (YYYY-MM-DD)\n"
-                "• `fin` - Date fin (YYYY-MM-DD)",
-                parse_mode="Markdown",
-            )
-            return
+        if pre_extracted is not None:
+            input_data = pre_extracted
+            if not input_data.get("tenant_name") or not input_data.get("charges"):
+                await update.message.reply_text("⚠️ Il manque le nom du locataire ou la liste des charges.")
+                return
+        else:
+            args = parse_command_args(update.message.text)
+            
+            if not args.get("locataire") or not args.get("montant"):
+                await update.message.reply_text(
+                    "❌ **Arguments manquants**\n\n"
+                    "Usage:\n"
+                    "`/charges locataire=\"Jean Dupont\" montant=450 provisions=400 annee=2023`",
+                    parse_mode="Markdown",
+                )
+                return
 
-        await send_typing_action(update, context)
-        await update.message.reply_text("⏳ Génération du décompte en cours...")
-
-        try:
             # Calculer les dates par défaut (année précédente)
             current_year = date.today().year
             target_year = int(args.get("annee", current_year - 1))
@@ -547,7 +546,6 @@ SIRET: {self.settings.company_siret}
             default_start = args.get("debut", f"{target_year}-01-01")
             default_end = args.get("fin", f"{target_year}-12-31")
 
-            # Si l'utilisateur donne juste un montant, on crée une charge générique
             charges_list = [
                 {
                     "label": "Charges locatives (Total)",
@@ -555,18 +553,24 @@ SIRET: {self.settings.company_siret}
                 }
             ]
 
+            input_data = {
+                "tenant_name": args["locataire"],
+                "property_address": args.get("adresse", "Adresse du bien loué"),
+                "period_start": default_start,
+                "period_end": default_end,
+                "charges": charges_list,
+                "provisions_amount": float(args.get("provisions", 0)),
+            }
+
+        await send_typing_action(update, context)
+        await update.message.reply_text("⏳ Génération du décompte en cours...")
+
+        try:
             # Préparer l'état
             state: AdminAgentState = {
                 "user_id": user_id,
                 "request_type": "rental_charges",
-                "input_data": {
-                    "tenant_name": args["locataire"],
-                    "property_address": args.get("adresse", "Adresse du bien loué"),
-                    "period_start": default_start,
-                    "period_end": default_end,
-                    "charges": charges_list,
-                    "provisions_amount": float(args.get("provisions", 0)),
-                },
+                "input_data": input_data,
                 "validated_data": None,
                 "pdf_path": None,
                 "db_record_id": None,
@@ -614,19 +618,69 @@ SIRET: {self.settings.company_siret}
                 f"❌ Erreur lors de la génération: {str(e)}"
             )
 
-    async def handle_unknown(
+    async def handle_natural_language(
         self, update: Update, context: ContextTypes.DEFAULT_TYPE
     ) -> None:
-        """Gère les messages non reconnus."""
-        await update.message.reply_text(
-            "❓ Je n'ai pas compris votre message.\n\n"
-            "Utilisez `/help` pour voir les commandes disponibles."
-        )
+        """Gère les messages en langage naturel via l'orchestrateur."""
+        user_id = update.effective_user.id
+        text = update.message.text
+
+        if not validate_user_access(user_id, self.settings.telegram_admin_users):
+            return # On ignore silencieusement ou on refuse
+
+        await send_typing_action(update, context)
+
+        # 1. Sauvegarder le message utilisateur
+        await self.db.add_chat_message(user_id, "user", text)
+
+        # Analyser l'intention avec l'IA
+        analysis = await self.orchestrator.analyze_message(text, user_id)
+        intent = analysis["intent"]
+        data = analysis["extracted_data"]
+        confidence = analysis["confidence"]
+
+        logger.info(f"Intention: {intent} ({confidence:.2f})")
+
+        # Router vers la bonne commande
+        if intent == "chat":
+            reply = analysis.get("reply_text") or "Je suis là pour vous aider avec vos documents administratifs."
+            # 2. Sauvegarder la réponse assistant
+            await self.db.add_chat_message(user_id, "assistant", reply)
+            await update.message.reply_text(reply)
+            
+        elif intent == "invoice":
+            context.user_data["pre_extracted_data"] = data
+            await self.cmd_invoice(update, context)
+            
+        elif intent == "quote":
+            context.user_data["pre_extracted_data"] = data
+            await self.cmd_quote(update, context)
+            
+        elif intent == "mileage":
+            context.user_data["pre_extracted_data"] = data
+            await self.cmd_mileage(update, context)
+            
+        elif intent == "rent_receipt":
+            context.user_data["pre_extracted_data"] = data
+            await self.cmd_rent_receipt(update, context)
+            
+        elif intent == "rental_charges":
+            context.user_data["pre_extracted_data"] = data
+            await self.cmd_rental_charges(update, context)
+            
+        elif intent == "stats":
+            await self.cmd_stats(update, context)
+            
+        else:
+            msg = "Je n'ai pas bien compris votre demande. Pouvez-vous reformuler ?"
+            await self.db.add_chat_message(user_id, "assistant", msg)
+            await update.message.reply_text(msg)
 
     def run(self) -> None:
         """Lance le bot en mode polling."""
         logger.info("🤖 Démarrage du bot Telegram...")
         logger.info(f"📱 Bot configuré pour: {self.settings.company_name}")
+        logger.info(f"👥 Admins autorisés: {self.settings.telegram_admin_users}")
 
         try:
             self.app.run_polling(allowed_updates=Update.ALL_TYPES)

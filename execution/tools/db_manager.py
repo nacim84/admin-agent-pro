@@ -1,8 +1,8 @@
 """Gestionnaire de base de données PostgreSQL."""
 
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
-from sqlalchemy import select, func
-from execution.models.database import Base, Document, DocumentType
+from sqlalchemy import select, func, desc
+from execution.models.database import Base, Document, DocumentType, ChatHistory
 from execution.core.config import get_settings
 from typing import Optional
 import logging
@@ -269,6 +269,41 @@ class DatabaseManager:
                 seq = 1
 
             return f"REGUL-{year}-{seq:04d}"
+
+    async def add_chat_message(self, user_id: int, role: str, content: str) -> None:
+        """Ajoute un message à l'historique."""
+        try:
+            async with self.async_session_maker() as session:
+                message = ChatHistory(
+                    user_id=user_id,
+                    role=role,
+                    content=content
+                )
+                session.add(message)
+                await session.commit()
+        except Exception as e:
+            logger.error(f"❌ Erreur sauvegarde chat: {e}")
+
+    async def get_chat_history(self, user_id: int, limit: int = 10) -> list[dict]:
+        """
+        Récupère l'historique récent pour un utilisateur.
+        Retourne une liste de dicts ordonnée du plus ancien au plus récent.
+        """
+        async with self.async_session_maker() as session:
+            # Récupérer les X derniers messages (descendant)
+            result = await session.execute(
+                select(ChatHistory)
+                .where(ChatHistory.user_id == user_id)
+                .order_by(desc(ChatHistory.created_at))
+                .limit(limit)
+            )
+            messages = result.scalars().all()
+            
+            # Remettre dans l'ordre chronologique (ancien -> récent)
+            return [
+                {"role": msg.role, "content": msg.content}
+                for msg in reversed(messages)
+            ]
 
     async def get_document_count_by_type(self, user_id: int) -> dict[str, int]:
         """Retourne le nombre de documents par type pour un utilisateur."""

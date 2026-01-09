@@ -17,7 +17,9 @@ class Settings(BaseSettings):
 
     # LLM API
     anthropic_api_key: Optional[str] = None
-    gemini_api_key: str
+    gemini_api_key: Optional[str] = None
+    openrouter_api_key: str
+    openrouter_model: str = "google/gemini-2.0-flash-001" # Default model
 
     # Telegram
     telegram_bot_token: str

@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 from typing import Any, TypedDict
 from pathlib import Path
 from langgraph.graph import StateGraph, END
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_openai import ChatOpenAI
 from execution.tools.pdf_generator import PDFGenerator
 from execution.tools.db_manager import DatabaseManager
 from execution.core.config import get_settings
@@ -35,10 +35,11 @@ class BaseAdminAgent(ABC):
         self.db = DatabaseManager()
         self.logger = logging.getLogger(self.__class__.__name__)
         
-        # Initialisation du LLM Gemini
-        self.llm = ChatGoogleGenerativeAI(
-            model="gemini-1.5-flash",
-            google_api_key=self.settings.gemini_api_key,
+        # Initialisation du LLM via OpenRouter
+        self.llm = ChatOpenAI(
+            base_url="https://openrouter.ai/api/v1",
+            api_key=self.settings.openrouter_api_key,
+            model=self.settings.openrouter_model,
             temperature=0,
         )
 
