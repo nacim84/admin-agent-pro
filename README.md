@@ -145,23 +145,213 @@ Remplir les variables :
 uv run python execution/init_db.py
 ```
 
-#### 8. Lancer le bot
+**Vérifier que l'initialisation a réussi** :
+```bash
+# Vous devriez voir :
+# 🚀 Initialisation de la base de données...
+# ✅ Base de données initialisée avec succès !
+# 📋 Tables créées: documents
+
+# Vérifier que la table existe
+psql -U admin -d admin_agent -c "\dt"
+# Devrait afficher la table "documents"
+```
+
+#### 8. **✅ CHECKLIST AVANT DE LANCER LE BOT**
+
+**Avant d'exécuter `run_bot.py`, vérifiez que TOUTES ces conditions sont remplies** :
+
+##### 8.1. Vérifier PostgreSQL
+```bash
+# PostgreSQL doit être démarré
+# Linux
+sudo service postgresql status
+
+# Mac
+brew services list | grep postgresql
+
+# Windows
+# Vérifier dans Services (services.msc) que PostgreSQL est démarré
+```
+
+##### 8.2. Vérifier la connexion à la base
+```bash
+# Tester la connexion avec les credentials de votre .env
+psql -U admin -d admin_agent
+
+# Si ça marche, vous êtes connecté. Tapez \q pour quitter
+# Si erreur "FATAL: password authentication failed" → vérifier POSTGRES_PASSWORD dans .env
+# Si erreur "FATAL: database does not exist" → créer la base avec createdb admin_agent
+```
+
+##### 8.3. Vérifier le fichier .env
+```bash
+# Afficher le contenu (sans les mots de passe)
+cat .env | grep -v PASSWORD
+
+# Vérifier que TOUTES ces variables sont remplies :
+# ✅ POSTGRES_HOST (localhost en général)
+# ✅ POSTGRES_PORT (5432 par défaut)
+# ✅ POSTGRES_DB (admin_agent)
+# ✅ POSTGRES_USER (admin ou postgres)
+# ✅ POSTGRES_PASSWORD (votre mot de passe PostgreSQL)
+# ✅ TELEGRAM_BOT_TOKEN (123456789:ABCdef...)
+# ✅ TELEGRAM_ADMIN_USERS ([123456789])
+# ✅ COMPANY_NAME ("Ma SASU")
+# ✅ COMPANY_SIRET ("123 456 789 00012")
+# ✅ COMPANY_ADDRESS ("1 Rue Example, 75001 Paris")
+# ✅ COMPANY_TVA_NUMBER ("FR12345678901")
+# ✅ ANTHROPIC_API_KEY (sk-ant-... - optionnel pour le moment)
+```
+
+##### 8.4. Vérifier votre Telegram user_id
+```bash
+# 1. Ouvrir Telegram
+# 2. Chercher le bot @userinfobot
+# 3. Envoyer /start
+# 4. Noter votre Id (ex: 123456789)
+# 5. Vérifier qu'il est bien dans TELEGRAM_ADMIN_USERS dans .env
+#    Format: TELEGRAM_ADMIN_USERS=[123456789]
+#    Si plusieurs: TELEGRAM_ADMIN_USERS=[123456789,987654321]
+```
+
+##### 8.5. Vérifier les dépendances Python
+```bash
+# Vérifier que toutes les dépendances sont installées
+uv pip list | grep -E "telegram|langgraph|reportlab|pydantic|sqlalchemy"
+
+# Si vide ou incomplet, réinstaller :
+uv sync
+```
+
+##### 8.6. Vérifier la structure des dossiers
+```bash
+# Ces dossiers doivent exister :
+ls -la execution/agents/
+ls -la execution/tools/
+ls -la execution/models/
+ls -la .tmp/
+
+# Si .tmp/ n'existe pas :
+mkdir -p .tmp/documents
+```
+
+#### 9. Lancer le bot
+
+**Une fois TOUTES les vérifications passées**, lancez le bot :
 
 ```bash
 uv run python run_bot.py
 ```
 
-Vous devriez voir :
+**✅ Sortie attendue (succès)** :
 ```
-🤖 Démarrage du bot Telegram...
-📱 Bot configuré pour: Votre Entreprise
+==================================================
+🤖 Admin Agent Pro - Bot Telegram
+==================================================
+
+2024-01-09 14:30:00 - INFO - ✅ Bot initialisé
+2024-01-09 14:30:00 - INFO - ✅ Handlers enregistrés
+2024-01-09 14:30:01 - INFO - 🤖 Démarrage du bot Telegram...
+2024-01-09 14:30:01 - INFO - 📱 Bot configuré pour: Ma SASU
 ```
 
-#### 9. Tester sur Telegram
+**❌ Erreurs possibles et solutions** :
 
-Ouvrez Telegram, trouvez votre bot et envoyez :
+**Erreur : `ValidationError: TELEGRAM_BOT_TOKEN`**
 ```
-/start
+Solution: Vérifier que TELEGRAM_BOT_TOKEN est rempli dans .env
+Format attendu: 123456789:ABCdefGHIjklMNOpqrsTUVwxyz
+```
+
+**Erreur : `could not connect to server: Connection refused`**
+```
+Solution: PostgreSQL n'est pas démarré
+Linux: sudo service postgresql start
+Mac: brew services start postgresql
+Windows: Démarrer le service PostgreSQL dans services.msc
+```
+
+**Erreur : `password authentication failed for user "admin"`**
+```
+Solution: Mot de passe PostgreSQL incorrect dans .env
+Vérifier POSTGRES_PASSWORD
+```
+
+**Erreur : `database "admin_agent" does not exist`**
+```
+Solution: Base de données non créée
+createdb admin_agent
+```
+
+**Erreur : `ModuleNotFoundError: No module named 'telegram'`**
+```
+Solution: Dépendances non installées
+uv sync
+```
+
+**Erreur : `telegram.error.InvalidToken`**
+```
+Solution: Token Telegram invalide
+1. Vérifier le token dans .env (pas d'espaces, pas de guillemets)
+2. Créer un nouveau bot avec @BotFather si nécessaire
+```
+
+#### 10. Tester sur Telegram
+
+**Une fois le bot démarré sans erreur** :
+
+1. Ouvrir **Telegram**
+2. Chercher votre bot (nom donné lors de la création avec @BotFather)
+3. Envoyer `/start`
+
+**✅ Réponse attendue** :
+```
+👋 Bienvenue sur Admin Agent Pro !
+
+Je suis votre assistant administratif automatisé.
+
+Je peux générer pour vous:
+• 📄 Factures
+• 📝 Devis
+• 🚗 Notes de frais kilométriques
+• 🏠 Quittances de loyer
+• 💰 Décomptes de charges
+
+Utilisez /help pour voir toutes les commandes disponibles.
+
+Configuration actuelle:
+Entreprise: Ma SASU
+SIRET: 123 456 789 00012
+```
+
+**❌ Si le bot ne répond pas** :
+1. Vérifier que votre user_id est dans TELEGRAM_ADMIN_USERS
+2. Vérifier les logs du bot (dans le terminal où vous avez lancé run_bot.py)
+3. Redémarrer le bot (Ctrl+C puis relancer)
+
+#### 11. Tester la génération d'une facture
+
+```
+/facture client="Test Client" montant=100 description="Test de génération"
+```
+
+**✅ Le bot devrait** :
+1. Répondre "⏳ Génération de la facture en cours..."
+2. Générer un PDF
+3. L'envoyer avec le message de confirmation
+4. Le PDF devrait contenir toutes les informations de votre entreprise
+
+**Vérifier le PDF généré** :
+```bash
+ls -la .tmp/documents/
+# Devrait contenir facture_2024-0001_YYYYMMDD.pdf
+```
+
+**Vérifier l'enregistrement en base** :
+```bash
+psql -U admin -d admin_agent -c "SELECT * FROM documents;"
+# Devrait afficher 1 ligne avec votre facture
 ```
 
 ### Utilisation
