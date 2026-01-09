@@ -6,7 +6,8 @@ from datetime import datetime
 import enum
 
 
-Base = declarative_base()
+class Base(DeclarativeBase):
+    pass
 
 
 class DocumentType(enum.Enum):
